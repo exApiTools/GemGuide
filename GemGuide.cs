@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using ExileCore.PoEMemory;
 using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.FilesInMemory;
 using ExileCore.Shared.Enums;
@@ -135,110 +136,226 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
             return;
         }
 
-        if (ImGui.Begin("Gems"))
+        Dictionary<GemSet, (Entity item, List<(string Id, SocketColor socketColor)> sockets)> matchDict = null;
+        Dictionary<GemSet, (Entity item, List<(string Id, SocketColor socketColor)> link)> moveGemMatches = null;
+        if (Settings.ShowGuideWindow)
         {
-            if (SwitchActiveSkillSet(activeSetId, profile, activeSet))
+            if (ImGui.Begin("Gems"))
             {
-                ImGui.End();
-                return;
-            }
-
-            var (matchDict, moveGemMatches) = GetGemData();
-
-            var ownedGems = ItemData.StaticPlayerData.OwnedGems.GroupBy(x => x.BaseName).ToDictionary(x => x.Key, x => x.Count());
-            foreach (var gemSet in activeSet.GemSets)
-            {
-                ImGui.TextUnformatted(string.IsNullOrWhiteSpace(gemSet.Label)
-                    ? string.Join('-', gemSet.Gems.Select(g => TranslateSkill(g.VariantId)).Where(x => !x.IsSupport).Select(x => x.Name))
-                    : gemSet.Label);
-                var slottedGems = new HashSet<Gem>();
-                var freeSlots = new Dictionary<SkillGemDatSocketType, int>();
-                if (matchDict.TryGetValue(gemSet, out var slottedIn))
+                if (SwitchActiveSkillSet(activeSetId, profile, activeSet))
                 {
-                    ImGui.SameLine();
-                    var itemName = GetItemName(slottedIn.item);
-                    slottedGems = gemSet.Gems.IntersectBy(slottedIn.sockets.Select(x => x.Id).Where(x => x != null), g => g.VariantId).ToHashSet();
-                    freeSlots = slottedIn.sockets.Where(x => x.Id == null || !gemSet.Gems.Select(g => g.VariantId).Contains(x.Id)).GroupBy(x => x.socketColor)
-                        .ToDictionary(x => (SkillGemDatSocketType)x.Key, x => x.Count());
-                    ImGui.Text($"(in {itemName}");
-                    if (Settings.ShowGearLinks)
-                    {
-                        ImGui.SameLine(0, 0);
-                        DrawSocketLink(slottedIn.sockets);
-                    }
-
-                    ImGui.SameLine(0, 0);
-                    ImGui.Text(")");
+                    ImGui.End();
+                    return;
                 }
 
-                if (moveGemMatches.TryGetValue(gemSet, out var moveTo))
-                {
-                    var itemName = GetItemName(moveTo.item);
-                    if (slottedIn == default)
-                    {
-                        freeSlots = moveTo.link.GroupBy(x => x.Item2)
-                            .ToDictionary(x => (SkillGemDatSocketType)x.Key, x => x.Count());
-                    }
+                (matchDict, moveGemMatches) = GetGemData();
 
-                    if (slottedIn == default || Settings.ShowGearSwitchesForSocketedLinks)
+                var ownedGems = ItemData.StaticPlayerData.OwnedGems.GroupBy(x => x.BaseName).ToDictionary(x => x.Key, x => x.Count());
+                foreach (var gemSet in activeSet.GemSets)
+                {
+                    GemSetText(gemSet, false);
+                    var slottedGems = new HashSet<Gem>();
+                    var freeSlots = new Dictionary<SkillGemDatSocketType, int>();
+                    if (matchDict.TryGetValue(gemSet, out var slottedIn))
                     {
                         ImGui.SameLine();
-                        ImGui.TextColored(Color.Yellow.ToImguiVec4(), $"(equippable in {itemName}");
+                        var itemName = GetItemName(slottedIn.item);
+                        slottedGems = gemSet.Gems.IntersectBy(slottedIn.sockets.Select(x => x.Id).Where(x => x != null), g => g.VariantId).ToHashSet();
+                        freeSlots = slottedIn.sockets.Where(x => x.Id == null || !gemSet.Gems.Select(g => g.VariantId).Contains(x.Id)).GroupBy(x => x.socketColor)
+                            .ToDictionary(x => (SkillGemDatSocketType)x.Key, x => x.Count());
+                        ImGui.Text($"(in {itemName}");
                         if (Settings.ShowGearLinks)
                         {
                             ImGui.SameLine(0, 0);
-                            DrawSocketLink(moveTo.link);
+                            DrawSocketLink(slottedIn.sockets);
                         }
 
                         ImGui.SameLine(0, 0);
-                        ImGui.TextColored(Color.Yellow.ToImguiVec4(), ")");
+                        ImGui.Text(")");
                     }
+
+                    if (moveGemMatches.TryGetValue(gemSet, out var moveTo))
+                    {
+                        var itemName = GetItemName(moveTo.item);
+                        if (slottedIn == default)
+                        {
+                            freeSlots = moveTo.link.GroupBy(x => x.Item2)
+                                .ToDictionary(x => (SkillGemDatSocketType)x.Key, x => x.Count());
+                        }
+
+                        if (slottedIn == default || Settings.ShowGearSwitchesForSocketedLinks)
+                        {
+                            ImGui.SameLine();
+                            ImGui.TextColored(Color.Yellow.ToImguiVec4(), $"(equippable in {itemName}");
+                            if (Settings.ShowGearLinks)
+                            {
+                                ImGui.SameLine(0, 0);
+                                DrawSocketLink(moveTo.link);
+                            }
+
+                            ImGui.SameLine(0, 0);
+                            ImGui.TextColored(Color.Yellow.ToImguiVec4(), ")");
+                        }
+                    }
+
+                    ImGui.Indent();
+                    var perColorIndex = new ConcurrentDictionary<SkillGemDatSocketType, int>();
+                    var first = true;
+                    foreach (var gem in gemSet.Gems)
+                    {
+                        if (first)
+                        {
+                            first = false;
+                        }
+                        else
+                        {
+                            ImGui.SameLine();
+                            ImGui.Text("-");
+                            ImGui.SameLine();
+                        }
+
+                        var translateSkill = TranslateSkill(gem.VariantId);
+                        var gemSocketType = translateSkill.Socket;
+                        {
+                            using var s = ImGuiHelpers.UseStyleColor(ImGuiCol.Text,
+                                slottedGems.Contains(gem)
+                                    ? Color.LightGreen.ToImgui()
+                                    : gemSocketType == SkillGemDatSocketType.White || //let's just ignore the white gems, fuck those
+                                      perColorIndex.AddOrUpdate(gemSocketType, _ => 0, (_, i) => i + 1) < freeSlots.GetValueOrDefault(gemSocketType) ||
+                                      perColorIndex.AddOrUpdate(SkillGemDatSocketType.White, _ => 0, (_, i) => i + 1) <
+                                      freeSlots.GetValueOrDefault(SkillGemDatSocketType.White) // if white sockets are available, fall back to those
+                                        ? Color.Yellow.ToImgui()
+                                        : Color.Pink.ToImgui());
+                            ImGui.Text(ownedGems.ContainsKey(translateSkill.BaseName) ? $"[{translateSkill.Name}]" : translateSkill.Name);
+                        }
+                        ImGui.SameLine(0, 0);
+                        {
+                            using var s = ImGuiHelpers.UseStyleColor(ImGuiCol.Text,
+                                GetGemTextColor(gemSocketType).ToImgui());
+                            ImGui.Text(GetGemText(gemSocketType));
+                        }
+                    }
+
+                    ImGui.Unindent();
                 }
-
-                ImGui.Indent();
-                var perColorIndex = new ConcurrentDictionary<SkillGemDatSocketType, int>();
-                var first = true;
-                foreach (var gem in gemSet.Gems)
-                {
-                    if (first)
-                    {
-                        first = false;
-                    }
-                    else
-                    {
-                        ImGui.SameLine();
-                        ImGui.Text("-");
-                        ImGui.SameLine();
-                    }
-
-                    var translateSkill = TranslateSkill(gem.VariantId);
-                    var gemSocketType = translateSkill.Socket;
-                    {
-                        using var s = ImGuiHelpers.UseStyleColor(ImGuiCol.Text,
-                            slottedGems.Contains(gem)
-                                ? Color.LightGreen.ToImgui()
-                                : gemSocketType == SkillGemDatSocketType.White || //let's just ignore the white gems, fuck those
-                                  perColorIndex.AddOrUpdate(gemSocketType, _ => 0, (_, i) => i + 1) < freeSlots.GetValueOrDefault(gemSocketType) ||
-                                  perColorIndex.AddOrUpdate(SkillGemDatSocketType.White, _ => 0, (_, i) => i + 1) <
-                                  freeSlots.GetValueOrDefault(SkillGemDatSocketType.White) // if white sockets are available, fall back to those
-                                    ? Color.Yellow.ToImgui()
-                                    : Color.Pink.ToImgui());
-                        ImGui.Text(ownedGems.ContainsKey(translateSkill.BaseName) ? $"[{translateSkill.Name}]" : translateSkill.Name);
-                    }
-                    ImGui.SameLine(0, 0);
-                    {
-                        using var s = ImGuiHelpers.UseStyleColor(ImGuiCol.Text,
-                            GetGemTextColor(gemSocketType).ToImgui());
-                        ImGui.Text(GetGemText(gemSocketType));
-                    }
-                }
-
-                ImGui.Unindent();
             }
+
+            ImGui.End();
         }
 
-        ImGui.End();
+        if (Settings.ShowPurchaseUpgrades &&
+            (
+                    GameController.IngameState.IngameUi.PurchaseWindow,
+                    GameController.IngameState.IngameUi.PurchaseWindowHideout
+                ) switch
+                {
+                    ({ IsVisible: true } p1, _) => p1,
+                    (_, { IsVisible: true } p2) => p2,
+                    _ => null
+                } is { } purchaseWindow)
+        {
+            if (matchDict == null || moveGemMatches == null)
+            {
+                (matchDict, moveGemMatches) = GetGemData();
+            }
+
+            var visibleStashVisibleInventoryItems = purchaseWindow.TabContainer.VisibleStash.VisibleInventoryItems
+                .Select(x => (x, GetItemLinks(x.Item).Select(il => il.gems)))
+                .Where(x => x.Item2.Any())
+                .ToDictionary(x => x.x, x => (new List<GemSet>(), x.Item2));
+            foreach (var gemSet in activeSet.GemSets)
+            {
+                var activeRequirement = GetActiveGemRequirement(gemSet.Gems);
+                var supportRequirement = GetSupportGemRequirement(gemSet.Gems);
+                var existingMatch = matchDict.TryGetValue(gemSet, out var eqMatch)
+                    ? eqMatch
+                    : Settings.ConsiderExistingUpgradesWhenEvaluationPurchaseUpgrades
+                        ? moveGemMatches.GetValueOrDefault(gemSet)
+                        : default;
+                var existingScore = GetNumberOfUnsocketableGems(activeRequirement, supportRequirement,
+                    existingMatch == default ? default : GetSocketLinkGemSockets(existingMatch));
+                if (existingScore == (0, 0))
+                {
+                    continue;
+                }
+
+                foreach (var (item, (list, links)) in visibleStashVisibleInventoryItems)
+                {
+                    foreach (var link in links)
+                    {
+                        if (GetNumberOfUnsocketableGems(activeRequirement, supportRequirement, GetSocketLinkGemSockets((item.Item, link))).CompareTo(existingScore) < 0)
+                        {
+                            list.Add(gemSet);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            foreach (var (item, (setList, _)) in visibleStashVisibleInventoryItems.Where(x => x.Value.Item1.Any()))
+            {
+                var hoveredItem = GetHoveredItem();
+                var frameColor = Settings.PurchaseUpgradesFrameColor.Value;
+                if (hoveredItem != null && !item.Equals(hoveredItem) && (hoveredItem.Tooltip?.GetClientRectCache.Intersects(item.GetClientRectCache) ?? false))
+                {
+                    frameColor.A = (byte)(frameColor.A * (45.0 / 255));
+                }
+                Graphics.DrawFrame(item.GetClientRectCache.Inflated(-10, -10), frameColor, 10, Settings.PurchaseUpgradesFrameThickness.Value, 0);
+                if (item.Equals(hoveredItem))
+                {
+                    if (ImGui.BeginTooltip())
+                    {
+                        foreach (var gemSet in setList)
+                        {
+                            ImGui.TextColored(Color.LightGreen.ToImguiVec4(), "Upgrade for");
+                            ImGui.SameLine();
+                            GemSetText(gemSet, true);
+                        }
+
+                        ImGui.EndTooltip();
+                    }
+                }
+            }
+        }
     }
+
+    private void GemSetText(GemSet gemSet, bool colored)
+    {
+        if (colored)
+        {
+            var first = true;
+            foreach (var gem in gemSet.Gems)
+            {
+                if (first)
+                {
+                    first = false;
+                }
+                else
+                {
+                    ImGui.SameLine(0,0);
+                    ImGui.Text("-");
+                    ImGui.SameLine(0,0);
+                }
+
+                var translateSkill = TranslateSkill(gem.VariantId);
+                using var s = ImGuiHelpers.UseStyleColor(ImGuiCol.Text,
+                    GetGemTextColor(translateSkill.Socket).ToImgui());
+                ImGui.Text(translateSkill.Name);
+            }
+        }
+        else
+        {
+            ImGui.TextUnformatted(string.IsNullOrWhiteSpace(gemSet.Label)
+                ? string.Join('-', gemSet.Gems.Select(g => TranslateSkill(g.VariantId)).Where(x => !x.IsSupport).Select(x => x.Name))
+                : gemSet.Label);
+        }
+    }
+
+    private Element GetHoveredItem()
+    {
+        return GameController.IngameState.UIHover is { Address: not 0, Entity.IsValid: true } hover ? hover : null;
+    }
+
 
     private static void DrawSocketLink(List<(string Id, SocketColor socketColor)> sockets)
     {
@@ -334,8 +451,8 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
     }
 
     private (
-        Dictionary<GemSet, (Entity item, List<(string Id, SocketColor socketColor)> sockets, GemSet set)> matchDict,
-        Dictionary<GemSet, (Entity item, List<(string, SocketColor)> link, GemSet set)> moveGemMatches
+        Dictionary<GemSet, (Entity item, List<(string Id, SocketColor socketColor)> sockets)> matchDict,
+        Dictionary<GemSet, (Entity item, List<(string Id, SocketColor socketColor)> link)> moveGemMatches
         ) GetGemData()
     {
         var activeSet = GetActiveSet().activeSet;
@@ -364,8 +481,8 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
             .ToList();
         var itemLinks = GetItemLinks(items);
         var (matches, unpairedSets) = GetMatches(activeSet, itemLinks);
-        var matchDict = matches.ToDictionary(x => x.set);
-        var moveGemMatches = GetMoveMatches(activeSet.GemSets, matchDict, itemLinks).ToDictionary(x => x.set);
+        var matchDict = matches.ToDictionary(x => x.set, x => (x.item, x.sockets));
+        var moveGemMatches = GetMoveMatches(activeSet.GemSets, matchDict, itemLinks).ToDictionary(x => x.set, x => (x.item, x.link));
         return (matchDict, moveGemMatches);
     }
 
@@ -383,15 +500,20 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
 
     private static List<(Entity item, List<(string Id, SocketColor SocketColor)> gems)> GetItemLinks(List<Entity> items)
     {
-        return items.SelectMany(x => x.TryGetComponent<Sockets>(out var sockets)
+        return items.SelectMany(x => GetItemLinks(x)).ToList();
+    }
+
+    private static IEnumerable<(Entity item, List<(string Id, SocketColor SocketColor)> gems)> GetItemLinks(Entity x)
+    {
+        return x.TryGetComponent<Sockets>(out var sockets)
             ? sockets.SocketInfoByLinkGroup.Select(g =>
                 (item: x, gems: g.Select(gg => (gg.SocketedGemEntity?.GetComponent<SkillGem>()?.GemEffect.Id, gg.SocketColor)).ToList()))
-            : []).ToList();
+            : [];
     }
 
     private List<(Entity item, List<(string, SocketColor)> link, GemSet set)> GetMoveMatches(
         List<GemSet> allSets,
-        Dictionary<GemSet, (Entity item, List<(string Id, SocketColor socketColor)> sockets, GemSet set)> matchDict,
+        Dictionary<GemSet, (Entity item, List<(string Id, SocketColor socketColor)> sockets)> matchDict,
         List<(Entity item, List<(string Id, SocketColor SocketColor)> gems)> itemLinks)
     {
         var moveGemMatches = new List<(Entity, List<(string, SocketColor)>, GemSet)>();

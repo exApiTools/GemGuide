@@ -1,9 +1,11 @@
 ﻿using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ExileCore;
 using ExileCore.Shared.Attributes;
+using ExileCore.Shared.Helpers;
 using ExileCore.Shared.Interfaces;
 using ExileCore.Shared.Nodes;
 using ImGuiNET;
@@ -21,6 +23,11 @@ public class GemGuideSettings : ISettings
     public ToggleNode ShowGearLinks { get; set; } = new ToggleNode(true);
     public ToggleNode ShowGearSwitchesForSocketedLinks { get; set; } = new ToggleNode(true);
     public ToggleNode ReuseRemainingSocketsInLink { get; set; } = new ToggleNode(true);
+    public ToggleNode ShowGuideWindow { get; set; } = new ToggleNode(true);
+    public ToggleNode ShowPurchaseUpgrades { get; set; } = new ToggleNode(true);
+    public ToggleNode ConsiderExistingUpgradesWhenEvaluationPurchaseUpgrades { get; set; } = new ToggleNode(true);
+    public ColorNode PurchaseUpgradesFrameColor { get; set; } = new ColorNode(Color.Green.ToSharpDx());
+    public RangeNode<int> PurchaseUpgradesFrameThickness { get; set; } = new(5, 0, 10);
     public ButtonNode ReloadProfiles { get; set; } = new ButtonNode();
 
     public ProfileSettings ProfileSettings { get; set; } = new ProfileSettings();
