@@ -20,6 +20,7 @@ public class GemGuideSettings : ISettings
     public ToggleNode UseInventoryItems { get; set; } = new ToggleNode(true);
     public ToggleNode ShowGearLinks { get; set; } = new ToggleNode(true);
     public ToggleNode ShowGearSwitchesForSocketedLinks { get; set; } = new ToggleNode(true);
+    public ToggleNode ReuseRemainingSocketsInLink { get; set; } = new ToggleNode(true);
     public ButtonNode ReloadProfiles { get; set; } = new ButtonNode();
 
     public ProfileSettings ProfileSettings { get; set; } = new ProfileSettings();

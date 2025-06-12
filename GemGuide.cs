@@ -419,10 +419,51 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
             }
 
             itemLinks.Remove(bestFit.il);
+            if (bestFit.unsocketable == (0, 0) && bestFit.il.gems.Count > gemSet.Gems.Count)
+            {
+                TryReaddPartialLink(itemLinks, gemSet, bestFit.il);
+            }
+
             moveGemMatches.Add((bestFit.il.item, bestFit.il.gems, gemSet));
         }
 
         return moveGemMatches;
+    }
+
+    private void TryReaddPartialLink(List<(Entity item, List<(string Id, SocketColor SocketColor)> gems)> itemLinks, GemSet gemSet,
+        (Entity item, List<(string Id, SocketColor SocketColor)> gems) removedLink)
+    {
+        if (!Settings.ReuseRemainingSocketsInLink)
+        {
+            return;
+        }
+
+        bool failed = false;
+        var remainingLink = (removedLink.item, removedLink.gems.ToList());
+        foreach (var gemSetGem in gemSet.Gems.OrderBy(x => TranslateSkill(x.VariantId).Socket == SkillGemDatSocketType.White)) //white gems last
+        {
+            var skillGemDatSocketType = TranslateSkill(gemSetGem.VariantId).Socket;
+            if (remainingLink.Item2.Select((x, i) => (x, i + 1)).OrderBy(x => x.x.SocketColor == SocketColor.White) //white sockets last
+                    .FirstOrDefault(x => x.x.SocketColor == (SocketColor)skillGemDatSocketType || x.x.SocketColor == SocketColor.White ||
+                                         skillGemDatSocketType == SkillGemDatSocketType.White) is { Item2: > 0, x: var socketToRemove })
+            {
+                if (!remainingLink.Item2.Remove(socketToRemove))
+                {
+                    failed = true;
+                    break;
+                }
+            }
+            else
+            {
+                failed = true;
+                break;
+            }
+        }
+
+        if (!failed && remainingLink.Item2.Count > 0)
+        {
+            itemLinks.Add(remainingLink);
+        }
     }
 
     private static (int, int, int, int) GetSocketLinkGemSockets((Entity item, List<(string Id, SocketColor SocketColor)> gems) il)
@@ -526,17 +567,23 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
             var maxMatch = itemLinks
                 .Where(il => !gemSet.Gems.Where(x => !TranslateSkill(x.VariantId).IsSupport).Select(g => g.VariantId).Except(il.sockets.Select(ilg => ilg.Id)).Any())
                 .DefaultIfEmpty()
-                .MaxBy(il => il == default
-                    ? 0
-                    : gemSet.Gems.Where(x => TranslateSkill(x.VariantId).IsSupport).Select(g => g.VariantId).Intersect(il.sockets.Select(ilg => ilg.Id)).Count());
-            if (maxMatch == default)
+                .Select(il => (il, missingGemCount: il == default
+                    ? 1000
+                    : gemSet.Gems.Where(x => TranslateSkill(x.VariantId).IsSupport).Select(g => g.VariantId).Except(il.sockets.Select(ilg => ilg.Id)).Count()))
+                .MinBy(il => il.missingGemCount);
+            if (maxMatch.il == default)
             {
                 continue;
             }
 
-            itemLinks.Remove(maxMatch);
+            itemLinks.Remove(maxMatch.il);
+            if (maxMatch.missingGemCount == 0 && gemSet.Gems.Count < maxMatch.il.sockets.Count)
+            {
+                TryReaddPartialLink(itemLinks, gemSet, maxMatch.il);
+            }
+
             unpairedSets.Remove(gemSet);
-            matches.Add((maxMatch.x, maxMatch.sockets, gemSet));
+            matches.Add((maxMatch.il.x, maxMatch.il.sockets, gemSet));
         }
 
         //pass 2, any active gems, max by (activeGems, supportGems)
