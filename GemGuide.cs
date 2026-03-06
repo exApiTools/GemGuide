@@ -174,6 +174,8 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
     {
         Settings.ReloadProfiles.OnPressed += () => Profiles = ReloadProfiles();
         Profiles = ReloadProfiles();
+        Input.RegisterKey(Settings.ToggleGuideWindowHotkey);
+        Settings.ToggleGuideWindowHotkey.OnValueChanged += () => Input.RegisterKey(Settings.ToggleGuideWindowHotkey);
         return true;
     }
 
@@ -215,6 +217,9 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
 
     public override void Render()
     {
+        if (Settings.ToggleGuideWindowHotkey.PressedOnce())
+            Settings.ShowGuideWindow.Value = !Settings.ShowGuideWindow.Value;
+
         var (profile, activeSetId, activeSet) = GetActiveSet();
         if (activeSetId == null)
         {
@@ -231,6 +236,13 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
                 {
                     ImGui.End();
                     return;
+                }
+
+                ImGui.SameLine();
+                var showCompleted = Settings.ShowCompletedGemSets.Value;
+                if (ImGui.Checkbox("Show completed sets", ref showCompleted))
+                {
+                    Settings.ShowCompletedGemSets.Value = showCompleted;
                 }
 
                 (matchDict, moveGemMatches, var allEquippedGemIds) = GetGemData();
@@ -514,6 +526,48 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
                     frameColor.A = (byte)(frameColor.A * (45.0 / 255));
                 Graphics.DrawFrame(invItem.GetClientRectCache.Inflated(-10, -10), frameColor, 10, Settings.PurchaseUpgradesFrameThickness.Value, 0);
                 if (invItem.Equals(hoveredItem) && ImGui.BeginTooltip())
+                {
+                    ImGui.TextColored(Color.Cyan.ToImguiVec4(), "Required gem");
+                    ImGui.EndTooltip();
+                }
+            }
+        }
+
+        if (Settings.ShowPurchaseUpgrades && GameController.IngameState.IngameUi.QuestRewardWindow.IsVisible)
+        {
+            var requiredGemNames = activeSet.GemSets
+                .SelectMany(gs => gs.Gems)
+                .SelectMany(g => new[] { g.Name, TranslateSkill(g.VariantId).BaseName }.Where(x => !string.IsNullOrEmpty(x)))
+                .ToHashSet();
+            var requiredCountPerGem = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var g in activeSet.GemSets.SelectMany(gs => gs.Gems))
+            {
+                var baseName = TranslateSkill(g.VariantId).BaseName;
+                if (!string.IsNullOrEmpty(baseName))
+                    requiredCountPerGem[baseName] = requiredCountPerGem.GetValueOrDefault(baseName, 0) + 1;
+            }
+            var ownedGems = ItemData.StaticPlayerData.OwnedGems.GroupBy(x => x.BaseName).ToDictionary(x => x.Key, x => x.Count(), StringComparer.OrdinalIgnoreCase);
+            var rewardItems = GameController.IngameState.IngameUi.QuestRewardWindow.GetPossibleRewards();
+            foreach (var (entity, element) in rewardItems)
+            {
+                if (entity is not { Address: not 0, IsValid: true })
+                    continue;
+                var itemData = new ItemData(entity, GameController);
+                if (itemData.GemInfo is not { IsGem: true })
+                    continue;
+                if (!requiredGemNames.Contains(itemData.BaseName))
+                    continue;
+                var requiredCount = requiredCountPerGem.GetValueOrDefault(itemData.BaseName, 1);
+                if (ownedGems.GetValueOrDefault(itemData.BaseName, 0) >= requiredCount)
+                    continue;
+                var rect = element.GetClientRectCache;
+                var frameColor = Settings.PurchaseRequiredGemsFrameColor.Value;
+                var hoveredItem = GetHoveredItem();
+                var isHovered = hoveredItem != null && element.Address != 0 && element.Address == hoveredItem.Address;
+                if (hoveredItem != null && !isHovered && (hoveredItem.Tooltip?.GetClientRectCache.Intersects(rect) ?? false))
+                    frameColor.A = (byte)(frameColor.A * (45.0 / 255));
+                Graphics.DrawFrame(rect.Inflated(-10, -10), frameColor, 10, Settings.PurchaseUpgradesFrameThickness.Value, 0);
+                if (isHovered && ImGui.BeginTooltip())
                 {
                     ImGui.TextColored(Color.Cyan.ToImguiVec4(), "Required gem");
                     ImGui.EndTooltip();

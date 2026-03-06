@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using ExileCore;
 using ExileCore.Shared.Attributes;
 using ExileCore.Shared.Helpers;
@@ -24,8 +25,15 @@ public class GemGuideSettings : ISettings
     public ToggleNode ShowGearLinks { get; set; } = new ToggleNode(true);
     public ToggleNode ShowGearSwitchesForSocketedLinks { get; set; } = new ToggleNode(true);
     public ToggleNode ReuseRemainingSocketsInLink { get; set; } = new ToggleNode(true);
+
+    [IgnoreMenu]
     public ToggleNode ShowGuideWindow { get; set; } = new ToggleNode(true);
+
+    public HotkeyNode ToggleGuideWindowHotkey { get; set; } = new HotkeyNode(Keys.G);
+
     public ToggleNode ShowEmptyGemSets { get; set; } = new ToggleNode(true);
+
+    [IgnoreMenu]
     public ToggleNode ShowCompletedGemSets { get; set; } = new ToggleNode(true);
     public ToggleNode ShowEquippedButNotRequiredGems { get; set; } = new ToggleNode(true);
     public ToggleNode ShowGemAcquisition { get; set; } = new ToggleNode(true);
