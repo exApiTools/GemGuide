@@ -212,7 +212,7 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
         {
             { } s when s.EndsWith(" Support") => s[..^" Support".Length],
             var s => s ?? id,
-        }, bit.BaseName ?? id, gem.IsSupportGem, gem.SocketType);
+        }, bit.BaseName ?? id, gem.IsSupportGem, SkillGemDatSocketType.Blue);
     }
 
     public override void Render()
@@ -766,7 +766,7 @@ public class GemGuide : BaseSettingsPlugin<GemGuideSettings>
     {
         return x.TryGetComponent<Sockets>(out var sockets)
             ? sockets.SocketInfoByLinkGroup.Select(g =>
-                (item: x, gems: g.Select(gg => (gg.SocketedGemEntity?.GetComponent<SkillGem>()?.GemEffect.Id, gg.SocketColor)).ToList()))
+                (item: x, gems: g.Select(gg => (gg.SocketedGemEntity?.GetComponent<SkillGem>()?.GemEffect.Id, SocketColor.Blue)).ToList()))
             : [];
     }
 
